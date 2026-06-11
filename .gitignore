@@ -1,0 +1,38 @@
+# Secrets & credentials
+.env
+airflow/config/gcp-key.json
+*.json
+!package.json
+
+# Data files
+data/raw/
+data/*.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MLflow
+mlruns/
+mlruns.db
+
+# dbt
+dbt/datapulse/target/
+dbt/datapulse/dbt_packages/
+dbt/datapulse/logs/
+
+# Airflow
+airflow/logs/
+
+# OS
+.DS_Store
+Thumbs.db
