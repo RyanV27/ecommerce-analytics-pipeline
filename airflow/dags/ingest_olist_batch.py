@@ -32,16 +32,33 @@ with DAG(
     tags=['ingestion', 'bronze'],
 ) as dag:
 
+    # order_reviews has embedded newlines and quotes in review text fields.
+    # product_category_name_translation has all-string columns so BigQuery autodetect
+    # cannot distinguish the header row from data — explicit schema required.
+    TABLE_OVERRIDES = {
+        'order_reviews': {'allow_quoted_newlines': True, 'quote_character': '"'},
+        'product_category_name_translation': {
+            'autodetect': False,
+            'schema_fields': [
+                {'name': 'product_category_name', 'type': 'STRING', 'mode': 'NULLABLE'},
+                {'name': 'product_category_name_english', 'type': 'STRING', 'mode': 'NULLABLE'},
+            ],
+        },
+    }
+
     load_tasks = []
     for table, gcs_path in TABLES.items():
+        overrides = TABLE_OVERRIDES.get(table, {})
+        autodetect = overrides.pop('autodetect', True)
         task = GCSToBigQueryOperator(
             task_id=f'load_{table}',
             bucket=GCS_BUCKET,
             source_objects=[gcs_path],
             destination_project_dataset_table=f'{PROJECT_ID}.bronze.{table}',
             write_disposition='WRITE_TRUNCATE',
-            autodetect=True,
+            autodetect=autodetect,
             skip_leading_rows=1,
+            **overrides,
         )
         load_tasks.append(task)
 

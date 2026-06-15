@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int_orders_enriched
+    description: >
+      Orders joined with customers, aggregated payments, and deduplicated reviews.
+      One row per order. Not exposed to BI tools — consumed by mart models.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_unique_id
+        tests: [not_null]
+      - name: total_payment_value
+        tests: [not_null]
+
+  - name: int_customer_orders
+    description: >
+      Delivered-order aggregations per customer_unique_id with RFM inputs.
+      Filtered to delivered orders only.
+    columns:
+      - name: customer_unique_id
+        tests: [unique, not_null]
+      - name: order_count
+        tests: [not_null]
+      - name: total_spent
+        tests: [not_null]
