@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: Cleaned orders with derived delivery metrics.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests: [not_null]
+      - name: order_status
+        tests:
+          - accepted_values:
+              values: ['created', 'approved', 'processing', 'invoiced',
+                       'shipped', 'delivered', 'canceled', 'unavailable']
+      - name: order_purchase_timestamp
+        tests: [not_null]
+
+  - name: stg_customers
+    description: Customers with customer_unique_id as canonical identifier.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: customer_unique_id
+        tests: [not_null]
+      - name: customer_zip_code_prefix
+        tests: [not_null]
+
+  - name: stg_order_items
+    description: Order line items with total_item_value derived field.
+    columns:
+      - name: order_id
+        tests: [not_null]
+      - name: order_item_id
+        tests: [not_null]
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+      - name: seller_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_sellers')
+              field: seller_id
+
+  - name: stg_order_payments
+    description: Payments aggregated to one row per order. Eliminates fan-out from instalments and split payments.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: total_payment_value
+        tests: [not_null]
+
+  - name: stg_order_reviews
+    description: Customer reviews. ~3% of orders have no review — always LEFT JOIN.
+    columns:
+      - name: review_id
+        tests:
+          - not_null
+          - unique:
+              config:
+                severity: warn  # Olist source has 789 duplicate review_ids (known dataset quality issue)
+      - name: order_id
+        tests: [not_null]
+
+  - name: stg_products
+    description: Products with typos fixed (lenght → length) and volume derived.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: stg_sellers
+    description: Seller dimension with normalised city/state casing.
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+      - name: seller_zip_code_prefix
+        tests: [not_null]
+
+  - name: stg_geolocation
+    description: Geolocation deduplicated to one row per zip prefix using AVG(lat/lng).
+    columns:
+      - name: zip_code_prefix
+        tests: [unique, not_null]

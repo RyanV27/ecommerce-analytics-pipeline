@@ -1,0 +1,76 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: project-837f8c23-eea0-4cd3-975
+    schema: bronze
+    freshness:
+      warn_after: {count: 25, period: hour}
+      error_after: {count: 49, period: hour}
+    tables:
+      - name: orders
+        loaded_at_field: order_purchase_timestamp
+        columns:
+          - name: order_id
+            tests: [unique, not_null]
+          - name: customer_id
+            tests: [not_null]
+          - name: order_status
+            tests:
+              - accepted_values:
+                  values: ['created', 'approved', 'processing', 'invoiced',
+                           'shipped', 'delivered', 'canceled', 'unavailable']
+
+      - name: customers
+        columns:
+          - name: customer_id
+            tests: [unique, not_null]
+          - name: customer_unique_id
+            tests: [not_null]
+
+      - name: order_items
+        columns:
+          - name: order_id
+            tests: [not_null]
+          - name: product_id
+            tests: [not_null]
+          - name: seller_id
+            tests: [not_null]
+
+      - name: order_payments
+        columns:
+          - name: order_id
+            tests: [not_null]
+          - name: payment_value
+            tests: [not_null]
+
+      - name: order_reviews
+        columns:
+          - name: review_id
+            tests:
+              - not_null
+              - unique:
+                  config:
+                    severity: warn  # Olist source has 789 duplicate review_ids (known dataset quality issue)
+          - name: order_id
+            tests: [not_null]
+
+      - name: products
+        columns:
+          - name: product_id
+            tests: [unique, not_null]
+
+      - name: sellers
+        columns:
+          - name: seller_id
+            tests: [unique, not_null]
+
+      - name: geolocation
+        columns:
+          - name: geolocation_zip_code_prefix
+            tests: [not_null]
+
+      - name: product_category_name_translation
+        columns:
+          - name: product_category_name
+            tests: [unique, not_null]

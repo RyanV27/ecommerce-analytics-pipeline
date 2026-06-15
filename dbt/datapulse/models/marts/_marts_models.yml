@@ -1,0 +1,110 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: Order fact table. One row per order, enriched with payment, review, and delivery metrics.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_unique_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_unique_id
+              config:
+                severity: warn  # dim_customers is scoped to delivered orders; non-delivered orders have no match by design
+      - name: order_status
+        tests:
+          - accepted_values:
+              values: ['created', 'approved', 'processing', 'invoiced',
+                       'shipped', 'delivered', 'canceled', 'unavailable']
+      - name: total_payment_value
+        tests: [not_null]
+      - name: order_purchase_timestamp
+        tests: [not_null]
+      - name: order_month
+        tests: [not_null]
+
+  - name: fct_order_items
+    description: Line-item fact table. One row per item within an order.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_orders')
+              field: order_id
+              config:
+                severity: warn  # 3 orphan order_items in Olist source have no matching order
+      - name: order_item_id
+        tests: [not_null]
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_products')
+              field: product_id
+      - name: seller_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_sellers')
+              field: seller_id
+      - name: price
+        tests: [not_null]
+
+  - name: dim_customers
+    description: Customer dimension with RFM features and churn label. One row per customer_unique_id.
+    columns:
+      - name: customer_unique_id
+        tests: [unique, not_null]
+      - name: frequency
+        tests: [not_null]
+      - name: monetary
+        tests: [not_null]
+      - name: recency_days
+        tests: [not_null]
+      - name: is_churned
+        tests: [not_null]
+      - name: is_repeat_customer
+        tests: [not_null]
+
+  - name: dim_products
+    description: Product dimension with typos corrected and English category names joined.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+      - name: product_category_name_english
+        tests:
+          - not_null:
+              config:
+                severity: warn  # 610 Olist products have NULL product_category_name in source
+
+  - name: dim_sellers
+    description: Seller dimension with geo-coordinates joined via zip code prefix.
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+      - name: seller_state
+        tests: [not_null]
+
+  - name: customer_cohorts
+    description: Cohort retention matrix — active customer count per cohort month and months-since-first-purchase.
+    columns:
+      - name: cohort_month
+        tests: [not_null]
+      - name: months_since_first
+        tests: [not_null]
+      - name: active_customers
+        tests: [not_null]
+
+  - name: seller_performance
+    description: Seller quality metrics — revenue, on-time rate, avg review score.
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+      - name: total_orders
+        tests: [not_null]
+      - name: total_revenue
+        tests: [not_null]

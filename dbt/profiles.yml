@@ -1,0 +1,12 @@
+datapulse:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: project-837f8c23-eea0-4cd3-975
+      dataset: silver
+      location: US
+      threads: 4
+      timeout_seconds: 300
+      retries: 1

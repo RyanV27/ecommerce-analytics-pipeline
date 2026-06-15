@@ -25,6 +25,7 @@ x-airflow-common: &airflow-common
     - ./airflow/config:/opt/airflow/config
     - ${APPDATA}/gcloud/application_default_credentials.json:/opt/airflow/config/adc.json:ro
     - ./data:/opt/airflow/data
+    - ./dbt:/opt/airflow/dbt
   depends_on:
     postgres:
       condition: service_healthy
