@@ -16,6 +16,10 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+vars:
+  repeat_snapshot_date: ""   # empty => compute dynamically as max_purchase_date - horizon
+  repeat_horizon_days: 180
+
 models:
   datapulse:
     staging:

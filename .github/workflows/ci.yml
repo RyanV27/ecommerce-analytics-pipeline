@@ -57,6 +57,21 @@ jobs:
               print('OK:', f)
           PY
 
+  ab-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest scipy numpy
+
+      - name: Run A/B testing unit tests
+        run: pytest ab_testing/test_ab_test.py -v
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

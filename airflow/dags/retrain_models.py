@@ -14,9 +14,9 @@ with DAG(
     tags=['ml', 'training'],
 ) as dag:
 
-    train_churn = BashOperator(
-        task_id='train_churn_model',
-        bash_command='cd /opt/airflow && python ml/churn_model.py',
+    train_repeat = BashOperator(
+        task_id='train_repeat_purchase_model',
+        bash_command='cd /opt/airflow && python ml/repeat_purchase_model.py',
     )
 
     train_segmentation = BashOperator(
@@ -30,4 +30,4 @@ with DAG(
     )
 
     # Models are independent — run in parallel
-    [train_churn, train_segmentation, train_forecasting]
+    [train_repeat, train_segmentation, train_forecasting]
