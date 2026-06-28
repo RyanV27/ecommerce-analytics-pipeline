@@ -118,7 +118,6 @@ def main() -> None:
 
     # Validate labels and guard against leakage columns
     X = X_train  # alias for downstream checks
-    y = y_train
 
     base_rate = float(pd.concat([y_train, y_test]).mean())
     log.info(f"Repeat-purchase base rate: {base_rate:.3f}")

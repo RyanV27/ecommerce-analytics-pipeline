@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from forecasting import MIN_WEEKS, FORECAST_PERIODS, _mape, _smape, fit_forecast
+from forecasting import MIN_WEEKS, _mape, _smape, fit_forecast
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,6 @@ Run from src/: pytest ml/test_segmentation.py -v
 """
 import numpy as np
 import pandas as pd
-import pytest
 
 from segmentation import label_segments, safe_qcut, RFM_Q
 
