@@ -39,7 +39,7 @@ final as (
         co.used_boleto,
         co.used_voucher,
         case when co.order_count > 1 then true else false end           as is_repeat_customer,
-        case when co.recency_days > 90 then true else false end         as is_churned
+        case when co.recency_days > 90 then true else false end         as is_inactive
     from customer_orders co
     left join customers_deduped c on co.customer_unique_id = c.customer_unique_id
     left join geo g on c.customer_zip_code_prefix = g.zip_code_prefix

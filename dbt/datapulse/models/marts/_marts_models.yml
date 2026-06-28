@@ -55,7 +55,7 @@ models:
         tests: [not_null]
 
   - name: dim_customers
-    description: Customer dimension with RFM features and churn label. One row per customer_unique_id.
+    description: Customer dimension with RFM features and an inactivity flag. One row per customer_unique_id.
     columns:
       - name: customer_unique_id
         tests: [unique, not_null]
@@ -65,7 +65,7 @@ models:
         tests: [not_null]
       - name: recency_days
         tests: [not_null]
-      - name: is_churned
+      - name: is_inactive
         tests: [not_null]
       - name: is_repeat_customer
         tests: [not_null]
@@ -107,4 +107,29 @@ models:
       - name: total_orders
         tests: [not_null]
       - name: total_revenue
+        tests: [not_null]
+
+  - name: repeat_purchase_training
+    description: >
+      Leakage-safe ML training table for repeat-purchase propensity. Features are computed as of snapshot_date T;
+      label (will_repeat) is derived from the forward window (T, T+horizon_days] — true when the customer made ≥1 delivered purchase in that window.
+      Managed by the repeat_horizon_days and repeat_snapshot_date dbt vars.
+    columns:
+      - name: customer_unique_id
+        tests: [unique, not_null]
+      - name: will_repeat
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: snapshot_date
+        tests: [not_null]
+      - name: frequency
+        tests: [not_null]
+      - name: monetary
+        tests: [not_null]
+      - name: recency_at_T
+        tests: [not_null]
+      - name: tenure_days
         tests: [not_null]
