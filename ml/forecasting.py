@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
+from google.cloud.bigquery import LoadJobConfig, SchemaField, WriteDisposition
 
 from bq import get_client
 from mlflow_utils import init_mlflow
@@ -153,7 +154,12 @@ def fit_forecast(weekly_df: pd.DataFrame, category: str) -> dict | None:
             freq="W",
         )
         forecast = pd.DataFrame(
-            {"ds": future_dates, "yhat": np.maximum(fc_all[-FORECAST_PERIODS:], 0)}
+            {
+                "ds": future_dates,
+                "yhat": np.maximum(fc_all[-FORECAST_PERIODS:], 0),
+                "yhat_lower": np.nan,
+                "yhat_upper": np.nan,
+            }
         )
         full_df = series.rename(columns={"week_start": "ds", "order_count": "y"}).copy()
         full_df["ds"] = pd.to_datetime(full_df["ds"])
@@ -183,6 +189,7 @@ def main() -> None:
     log.info(f"Top {TOP_N_CATEGORIES} categories: {top_cats}")
 
     all_results: list[dict] = []
+    forecast_rows: list[pd.DataFrame] = []
 
     with mlflow.start_run(run_name="demand_forecasting_top10"):
         mlflow.log_param("categories", ",".join(top_cats))
@@ -212,6 +219,14 @@ def main() -> None:
             ax.plot(series["ds"], series["y"], label="Actual", color="steelblue")
             future_mask = forecast["ds"] > series["ds"].max()
             fc_future = forecast[future_mask]
+
+            fc_rows = fc_future[["ds", "yhat"]].copy()
+            fc_rows["yhat_lower"] = fc_future["yhat_lower"] if "yhat_lower" in fc_future.columns else np.nan
+            fc_rows["yhat_upper"] = fc_future["yhat_upper"] if "yhat_upper" in fc_future.columns else np.nan
+            fc_rows["category"] = cat
+            fc_rows["model"] = result["model"]
+            forecast_rows.append(fc_rows)
+
             ax.plot(
                 fc_future["ds"],
                 fc_future["yhat"],
@@ -263,6 +278,38 @@ def main() -> None:
         run_id = mlflow.active_run().info.run_id
 
     log.info(f"MLflow run: {run_id}")
+
+    if forecast_rows:
+        out = pd.concat(forecast_rows, ignore_index=True)
+        out = out.rename(columns={"ds": "week"})
+        out["week"] = pd.to_datetime(out["week"]).dt.date
+        out["model_run_id"] = run_id
+        out["scored_at"] = pd.Timestamp.utcnow()
+        out = out[
+            ["category", "week", "yhat", "yhat_lower", "yhat_upper",
+             "model_run_id", "model", "scored_at"]
+        ]
+
+        schema = [
+            SchemaField("category", "STRING"),
+            SchemaField("week", "DATE"),
+            SchemaField("yhat", "FLOAT64"),
+            SchemaField("yhat_lower", "FLOAT64"),
+            SchemaField("yhat_upper", "FLOAT64"),
+            SchemaField("model_run_id", "STRING"),
+            SchemaField("model", "STRING"),
+            SchemaField("scored_at", "TIMESTAMP"),
+        ]
+        job_config = LoadJobConfig(
+            schema=schema, write_disposition=WriteDisposition.WRITE_TRUNCATE
+        )
+        table_id = f"{project}.gold.demand_forecasts"
+        job = client.load_table_from_dataframe(out, table_id, job_config=job_config)
+        job.result()
+        log.info(f"Wrote {len(out):,} rows → {table_id}")
+    else:
+        log.warning("No forecasts produced — skipping gold.demand_forecasts write")
+
     log.info("Forecasting complete.")
 
 

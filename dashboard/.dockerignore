@@ -1,0 +1,16 @@
+.env
+*.json
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+data/
+*.csv
+airflow/
+kafka/
+dbt/
+ml/
+notebooks/
+mlruns/
+.git/
+.github/

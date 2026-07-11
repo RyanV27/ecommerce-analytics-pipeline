@@ -157,3 +157,31 @@ def test_fallback_forecast_non_negative(monkeypatch):
     result = fit_forecast(df, "test_cat")
     assert result is not None
     assert (result["forecast"]["yhat"] >= 0).all()
+
+
+def test_fallback_forecast_has_null_ci_bounds(monkeypatch):
+    """ExponentialSmoothing has no native CI — bounds must be present but NaN
+    so the forecast schema stays uniform with the Prophet path."""
+    monkeypatch.setitem(sys.modules, "prophet", None)
+    df = _make_valid_df(n_weeks=MIN_WEEKS + 30)
+    result = fit_forecast(df, "test_cat")
+    assert result is not None
+    forecast = result["forecast"]
+    assert "yhat_lower" in forecast.columns
+    assert "yhat_upper" in forecast.columns
+    assert forecast["yhat_lower"].isna().all()
+    assert forecast["yhat_upper"].isna().all()
+
+
+def test_future_only_forecast_rows_are_collected():
+    """Mirrors the future_mask logic in main(): only rows after the last
+    observed week should be selected for the gold.demand_forecasts write."""
+    df = _make_valid_df(n_weeks=MIN_WEEKS + 30)
+    result = fit_forecast(df, "test_cat")
+    assert result is not None
+    series = result["series"]
+    forecast = result["forecast"]
+    future_mask = forecast["ds"] > series["ds"].max()
+    fc_future = forecast[future_mask]
+    assert len(fc_future) > 0
+    assert (fc_future["ds"] > series["ds"].max()).all()

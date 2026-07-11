@@ -16,6 +16,13 @@ x-airflow-common: &airflow-common
     GCP_PROJECT_ID: ${GCP_PROJECT_ID}
     GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID}
     GCS_BUCKET: ${GCS_BUCKET}
+    # gcloud CLI config lives on the container's own writable overlay rather than a
+    # live bind mount — Docker Desktop's Windows bind-mount driver can't satisfy
+    # SQLite's file-locking/chmod needs for credentials.db, the same class of problem
+    # as the FUSE/SQLite MLflow issue. airflow/gcloud-entrypoint.sh (the image's
+    # ENTRYPOINT) seeds this path from GCLOUD_HOST_CONFIG on every container start.
+    CLOUDSDK_CONFIG: /home/airflow/.gcloud-config
+    GCLOUD_HOST_CONFIG: /opt/airflow/gcloud-host
   env_file:
     - .env
   volumes:
@@ -24,8 +31,10 @@ x-airflow-common: &airflow-common
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/config:/opt/airflow/config
     - ${APPDATA}/gcloud/application_default_credentials.json:/opt/airflow/config/adc.json:ro
+    - ${APPDATA}/gcloud:/opt/airflow/gcloud-host:ro
     - ./data:/opt/airflow/data
     - ./dbt:/opt/airflow/dbt
+    - ./infra/vertex:/opt/airflow/infra/vertex:ro
   depends_on:
     postgres:
       condition: service_healthy
