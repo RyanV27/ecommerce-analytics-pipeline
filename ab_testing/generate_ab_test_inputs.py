@@ -13,7 +13,6 @@ Run from src/ with:
 
 import sys
 import os
-import textwrap
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -45,8 +44,8 @@ def case1_proportion(client) -> tuple[list, list]:
     ORDER BY delivered_on_time, RAND()
     """
     df = _run(client, sql)
-    control = df.loc[df["delivered_on_time"] == False, "satisfied"].tolist()   # late
-    variant = df.loc[df["delivered_on_time"] == True,  "satisfied"].tolist()   # on-time
+    control = df.loc[~df["delivered_on_time"], "satisfied"].tolist()   # late
+    variant = df.loc[df["delivered_on_time"], "satisfied"].tolist()    # on-time
     return control, variant
 
 

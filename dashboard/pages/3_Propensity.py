@@ -10,9 +10,7 @@ Coverage note: scores exist only for customers in gold.repeat_purchase_training
 after T appear in dim_customers but not in the scores table — they are new customers
 excluded by the forward-window design.
 """
-import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 import _pathfix  # noqa: F401  (adds src/ to sys.path for the dashboard.* import below)

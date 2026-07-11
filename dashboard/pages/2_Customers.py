@@ -3,7 +3,6 @@ Customers page — cohort retention, RFM segments, LTV histogram, top/bottom cus
 """
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 import _pathfix  # noqa: F401  (adds src/ to sys.path for the dashboard.* import below)
