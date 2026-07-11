@@ -243,6 +243,29 @@ def main() -> None:
     job.result()
     log.info(f"Wrote {len(scores):,} rows → {table_id}")
 
+    # Write feature importance so the Phase 4 dashboard can read it from BigQuery.
+    # gold.repeat_purchase_feature_importance is ML-owned (not managed by dbt).
+    fi_df = pd.DataFrame({
+        "feature": importances.index.tolist(),
+        "importance": importances.values.tolist(),
+        "model_run_id": run_id,
+        "scored_at": datetime.datetime.utcnow(),
+    })
+    fi_schema = [
+        SchemaField("feature", "STRING"),
+        SchemaField("importance", "FLOAT64"),
+        SchemaField("model_run_id", "STRING"),
+        SchemaField("scored_at", "TIMESTAMP"),
+    ]
+    fi_job_config = LoadJobConfig(
+        schema=fi_schema,
+        write_disposition=WriteDisposition.WRITE_TRUNCATE,
+    )
+    fi_table_id = f"{project}.gold.repeat_purchase_feature_importance"
+    fi_job = client.load_table_from_dataframe(fi_df, fi_table_id, job_config=fi_job_config)
+    fi_job.result()
+    log.info(f"Wrote {len(fi_df)} rows → {fi_table_id}")
+
 
 if __name__ == "__main__":
     main()

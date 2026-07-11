@@ -33,6 +33,13 @@ dbt/datapulse/logs/
 # Airflow
 airflow/logs/
 
+# Terraform (state and plan output can contain the MLflow Cloud SQL password)
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/*.tfvars
+infra/terraform/tfplan
+
 # OS
 .DS_Store
 Thumbs.db
