@@ -15,12 +15,6 @@ variable "mlflow_image" {
   default     = "gcr.io/PROJECT_ID/datapulse-mlflow"
 }
 
-variable "ml_training_image" {
-  description = "Fully qualified image shared by the segmentation Cloud Run Job and the Vertex training jobs (build first via ml/cloudbuild.yaml)"
-  type        = string
-  default     = "gcr.io/PROJECT_ID/datapulse-ml"
-}
-
 variable "db_tier" {
   description = "Cloud SQL machine tier for the MLflow backend store."
   type        = string

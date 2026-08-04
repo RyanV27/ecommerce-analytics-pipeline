@@ -1,7 +1,9 @@
 # DataPulse model-training infrastructure.
 #
-# Scope: MLflow tracking server, artifacts bucket, the ml_training service
-# account + IAM, and the segmentation Cloud Run Job. The dashboard's own
+# Scope: MLflow tracking server, artifacts bucket, and the ml_training
+# service account + IAM (now the identity shared by KubernetesPodOperator
+# training pods and the retained Vertex AI repeat-purchase job — see gke.tf
+# for the GKE cluster and Workload Identity bindings). The dashboard's own
 # Cloud Run service stays on the existing gcloud/WIF pipeline
 # (deploy.yml + cloudbuild.yaml) and is NOT managed here.
 #
@@ -255,43 +257,4 @@ resource "google_cloud_run_v2_service_iam_member" "mlflow_public" {
   name     = google_cloud_run_v2_service.mlflow.name
   role     = "roles/run.invoker"
   member   = "allUsers"
-}
-
-# --- Segmentation Cloud Run Job ---------------------------------------------
-#
-# Durable job definition only — execution ("gcloud run jobs execute
-# datapulse-segmentation --wait") is a run-time action driven by the retrain
-# DAG / runbook, not by Terraform.
-resource "google_cloud_run_v2_job" "segmentation" {
-  name     = "datapulse-segmentation"
-  location = var.region
-
-  template {
-    template {
-      service_account = google_service_account.ml_training.email
-
-      containers {
-        image = var.ml_training_image
-        args  = ["ml/segmentation.py"]
-
-        env {
-          name  = "GCP_PROJECT_ID"
-          value = var.project_id
-        }
-        env {
-          name  = "MLFLOW_TRACKING_URI"
-          value = google_cloud_run_v2_service.mlflow.uri
-        }
-
-        resources {
-          limits = {
-            memory = "2Gi"
-            cpu    = "2"
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [google_cloud_run_v2_service.mlflow]
 }

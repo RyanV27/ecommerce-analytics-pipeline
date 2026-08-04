@@ -1,0 +1,15 @@
+# Kubernetes ServiceAccount for the segmentation/forecasting
+# KubernetesPodOperator task pods. Bound to the ml_training GSA via the
+# Workload Identity IAM binding in infra/terraform/gke.tf
+# (google_service_account_iam_member.ml_training_workload_identity) — the
+# same identity already used by the retained Vertex AI repeat-purchase job.
+#
+# __ML_TRAINING_SA__ is substituted by infra/deploy_airflow.ps1, the same
+# placeholder convention used by infra/vertex/vertex_repeat_job.yaml.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-training
+  namespace: airflow
+  annotations:
+    iam.gke.io/gcp-service-account: __ML_TRAINING_SA__

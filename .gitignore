@@ -38,7 +38,7 @@ infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
 infra/terraform/*.tfvars
-infra/terraform/tfplan
+infra/terraform/tfplan*
 
 # OS
 .DS_Store

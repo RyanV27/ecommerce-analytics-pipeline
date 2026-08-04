@@ -9,13 +9,23 @@ output "mlflow_artifacts_bucket" {
 }
 
 output "ml_training_service_account_email" {
-  description = "Identity used by the segmentation Cloud Run Job and both Vertex AI training jobs"
+  description = "Identity used by KubernetesPodOperator training pods and the Vertex AI repeat-purchase job"
   value       = google_service_account.ml_training.email
 }
 
-output "segmentation_job_name" {
-  description = "Cloud Run Job name — run with: gcloud run jobs execute <name> --region <region> --wait"
-  value       = google_cloud_run_v2_job.segmentation.name
+output "gke_cluster_name" {
+  description = "GKE Autopilot cluster running Airflow"
+  value       = google_container_cluster.airflow.name
+}
+
+output "gke_region" {
+  description = "Region of the GKE Autopilot cluster"
+  value       = google_container_cluster.airflow.location
+}
+
+output "airflow_gke_service_account_email" {
+  description = "Workload Identity GSA bound to the Airflow scheduler/webserver KSA"
+  value       = google_service_account.airflow_gke.email
 }
 
 output "mlflow_db_connection_name" {

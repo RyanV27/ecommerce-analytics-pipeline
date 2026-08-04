@@ -17,15 +17,21 @@ jobs:
           python-version: "3.11"
 
       - name: Install ruff
-        run: pip install "ruff>=0.4.0"
+        # Pinned exact (not a >= range): an unpinned range let CI silently
+        # pick up a Ruff release with an expanded default rule set and break
+        # a previously-green build. ruff.toml now also pins the selected
+        # rules explicitly, so this pin is defense-in-depth, not the only guard.
+        run: pip install "ruff==0.15.17"
 
       - name: Lint code
         run: ruff check .
 
       - name: Check no secrets are tracked
-        # Fails the build if .env or any GCP credential JSON is committed
+        # Fails the build if .env or any GCP credential/ADC JSON is committed.
+        # airflow/config/ no longer exists (Phase 4.6 moved auth to Workload
+        # Identity) but the guard stays broad in case an ADC file lands elsewhere.
         run: |
-          tracked=$(git ls-files .env "airflow/config/*.json" 2>/dev/null || true)
+          tracked=$(git ls-files .env "**/adc.json" "**/*credentials*.json" 2>/dev/null || true)
           if [ -n "$tracked" ]; then
             echo "ERROR: secrets are tracked in git: $tracked"
             exit 1
@@ -44,8 +50,9 @@ jobs:
       - name: AST-check all DAG files
         # Uses Python's ast.parse for fast syntax validation without installing Airflow.
         # This catches SyntaxErrors and obvious import-time NameErrors in under 5 seconds.
-        # For full DAG load testing (which catches missing provider imports), run
-        # `airflow dags list` locally after `docker compose up`.
+        # For full DAG load testing (which catches missing provider imports), deploy to
+        # the GKE cluster (infra/deploy_airflow.ps1) and check the scheduler logs, or see
+        # docs/cloud_training_setup.md for the Phase 4.6 verification runbook.
         run: |
           python - <<'PY'
           import ast
@@ -72,13 +79,35 @@ jobs:
       - name: Run A/B testing unit tests
         run: pytest ab_testing/test_ab_test.py -v
 
+      - name: Install airflow test dependencies
+        run: pip install pyyaml
+
+      - name: Run Vertex job template unit tests
+        run: pytest airflow/tests/ -v
+
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Build Airflow image
-        # Validates the custom Dockerfile (the only non-stock image in the stack).
-        # Full `docker compose build` is skipped because docker-compose.yml mounts
-        # Windows APPDATA paths that don't exist on the CI runner.
-        run: docker build -f airflow/Dockerfile airflow/
+        # Build context is the repo root (not airflow/) so the Dockerfile can
+        # COPY dbt/ and infra/vertex/ alongside airflow/dags/ into the image.
+        run: docker build -f airflow/Dockerfile .
+
+  helm-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install helm
+        uses: azure/setup-helm@v4
+
+      - name: Validate Airflow Helm values render cleanly
+        # Catches values-schema drift against the pinned chart version without
+        # needing a live cluster.
+        run: |
+          helm repo add apache-airflow https://airflow.apache.org
+          helm repo update
+          helm template airflow apache-airflow/airflow --version 1.13.1 \
+            -f infra/helm/airflow-values.yaml > /dev/null
