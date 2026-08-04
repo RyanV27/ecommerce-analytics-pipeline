@@ -1,41 +1,76 @@
-from airflow import DAG
-from airflow.operators.bash import BashOperator
+import os
+import re
 from datetime import datetime, timedelta
 
-# Renders the __TOKEN__ placeholders in the committed infra/vertex/*.yaml specs
-# and submits + polls the job via gcloud. Kept as an inline sed+gcloud
-# BashOperator (not a .ps1) since the Airflow worker runs Linux; it renders the
-# same templates infra/submit_vertex_jobs.ps1 uses for manual/Windows
-# submission, so the job specs stay a single source of truth.
-#
-# `gcloud ai custom-jobs create` returns as soon as the job is submitted, not
-# once it finishes, so the task polls job state until it reaches a terminal
-# state and exits non-zero on failure (so Airflow retries behave correctly).
-VERTEX_SUBMIT_TEMPLATE = """
-set -e
-RENDERED=$(mktemp)
-sed \
-    -e "s|__PROJECT_ID__|${{GCP_PROJECT_ID}}|g" \
-    -e "s|__MLFLOW_TRACKING_URI__|${{MLFLOW_TRACKING_URI}}|g" \
-    -e "s|__ML_TRAINING_SA__|${{ML_TRAINING_SA}}|g" \
-    /opt/airflow/infra/vertex/{spec_file} > "$RENDERED"
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+from kubernetes.client import models as k8s
 
-JOB_NAME=$(gcloud ai custom-jobs create \
-    --region=us-central1 \
-    --display-name={display_name} \
-    --config="$RENDERED" \
-    --format="value(name)")
+from vertex_job import render_vertex_template
 
-while true; do
-    STATE=$(gcloud ai custom-jobs describe "$JOB_NAME" --region=us-central1 --format="value(state)")
-    echo "job state: $STATE"
-    case "$STATE" in
-        JOB_STATE_SUCCEEDED) exit 0 ;;
-        JOB_STATE_FAILED|JOB_STATE_CANCELLED) exit 1 ;;
-    esac
-    sleep 30
-done
-"""
+_CAMEL_TO_SNAKE_RE = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def _camel_to_snake_keys(obj):
+    """Recursively converts dict keys from camelCase to snake_case.
+
+    vertex_repeat_job.yaml is camelCase (the REST/gcloud config format
+    infra/submit_vertex_repeat_job.ps1 needs). aiplatform.CustomJob's
+    worker_pool_specs, however, builds a proto-plus message directly from
+    the dict, and proto-plus fields are snake_case -- passing the raw
+    camelCase dict raises `Protocol message WorkerPoolSpec has no
+    "machineSpec" field.` This conversion only touches the DAG's in-memory
+    copy; the shared YAML stays camelCase for the gcloud path.
+    """
+    if isinstance(obj, dict):
+        return {
+            _CAMEL_TO_SNAKE_RE.sub("_", k).lower(): _camel_to_snake_keys(v)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_camel_to_snake_keys(v) for v in obj]
+    return obj
+
+NAMESPACE = "airflow"
+ML_IMAGE = f"gcr.io/{os.environ['GCP_PROJECT_ID']}/datapulse-ml:latest"
+TASK_ENV = [
+    k8s.V1EnvVar(name="GCP_PROJECT_ID", value=os.environ["GCP_PROJECT_ID"]),
+    k8s.V1EnvVar(name="MLFLOW_TRACKING_URI", value=os.environ.get("MLFLOW_TRACKING_URI", "")),
+]
+TASK_RESOURCES = k8s.V1ResourceRequirements(requests={"cpu": "2", "memory": "4Gi"})
+
+VERTEX_TEMPLATE_PATH = "/opt/airflow/infra/vertex/vertex_repeat_job.yaml"
+
+
+def submit_vertex_repeat_job():
+    """Submits the repeat-purchase training job to Vertex AI via the
+    aiplatform SDK, reusing the committed CustomJobSpec YAML as the single
+    source of truth shared with infra/submit_vertex_repeat_job.ps1 (the
+    manual submission path)."""
+    from google.cloud import aiplatform
+
+    with open(VERTEX_TEMPLATE_PATH) as f:
+        template_text = f.read()
+
+    spec = render_vertex_template(
+        template_text,
+        project_id=os.environ["GCP_PROJECT_ID"],
+        mlflow_uri=os.environ["MLFLOW_TRACKING_URI"],
+        training_sa=os.environ["ML_TRAINING_SA"],
+    )
+
+    aiplatform.init(
+        project=os.environ["GCP_PROJECT_ID"],
+        location="us-central1",
+        staging_bucket=f"gs://{os.environ['MLFLOW_ARTIFACTS_BUCKET']}",
+    )
+    job = aiplatform.CustomJob(
+        display_name="datapulse-repeat-purchase-training",
+        worker_pool_specs=_camel_to_snake_keys(spec["workerPoolSpecs"]),
+    )
+    job.run(service_account=spec["serviceAccount"], sync=True)
+
 
 with DAG(
     dag_id='retrain_models',
@@ -49,31 +84,37 @@ with DAG(
     tags=['ml', 'training'],
 ) as dag:
 
-    # Cloud Run Job execution; --wait blocks until the job completes so
-    # downstream tasks only start once segmentation has finished writing to
-    # the shared MLflow server.
-    train_segmentation = BashOperator(
+    train_segmentation = KubernetesPodOperator(
         task_id='train_segmentation',
-        bash_command=(
-            'gcloud run jobs execute datapulse-segmentation '
-            '--region=us-central1 --wait'
-        ),
+        name='train-segmentation',
+        namespace=NAMESPACE,
+        image=ML_IMAGE,
+        arguments=['ml/segmentation.py'],
+        env_vars=TASK_ENV,
+        container_resources=TASK_RESOURCES,
+        service_account_name='ml-training',
+        get_logs=True,
+        is_delete_operator_pod=True,
+        startup_timeout_seconds=600,  # Autopilot node provisioning can take minutes
     )
 
-    train_repeat = BashOperator(
+    train_repeat = PythonOperator(
         task_id='train_repeat_purchase_model',
-        bash_command=VERTEX_SUBMIT_TEMPLATE.format(
-            spec_file='vertex_repeat_job.yaml',
-            display_name='datapulse-repeat-purchase-training',
-        ),
+        python_callable=submit_vertex_repeat_job,
     )
 
-    train_forecasting = BashOperator(
+    train_forecasting = KubernetesPodOperator(
         task_id='train_forecasting',
-        bash_command=VERTEX_SUBMIT_TEMPLATE.format(
-            spec_file='vertex_forecasting_job.yaml',
-            display_name='datapulse-forecasting-training',
-        ),
+        name='train-forecasting',
+        namespace=NAMESPACE,
+        image=ML_IMAGE,
+        arguments=['ml/forecasting.py'],
+        env_vars=TASK_ENV,
+        container_resources=TASK_RESOURCES,
+        service_account_name='ml-training',
+        get_logs=True,
+        is_delete_operator_pod=True,
+        startup_timeout_seconds=600,
     )
 
     # Serialized on purpose: the MLflow backend store is Cloud SQL Postgres

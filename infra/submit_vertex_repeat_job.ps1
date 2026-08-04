@@ -1,19 +1,21 @@
 <#
 .SYNOPSIS
-    Renders the Vertex AI CustomJobSpec templates and submits both training
-    jobs (repeat-purchase + forecasting) to Vertex AI.
+    Renders the Vertex AI CustomJobSpec template and submits the
+    repeat-purchase training job to Vertex AI.
 
 .DESCRIPTION
-    infra/vertex/*.yaml are templates with __TOKEN__ placeholders — they are
-    NOT runnable as-is. This script fills in the real project id, MLflow URL,
-    and ml_training service-account email, writes rendered copies to the temp
-    dir, and calls `gcloud ai custom-jobs create` for each.
+    infra/vertex/vertex_repeat_job.yaml is a template with __TOKEN__
+    placeholders — it is NOT runnable as-is. This script fills in the real
+    project id, MLflow URL, and ml_training service-account email, writes a
+    rendered copy to the temp dir, and calls `gcloud ai custom-jobs create`.
 
-    This is the manual / Windows-dev path for launching the two Vertex jobs
-    during setup and testing. The weekly `retrain_models` Airflow DAG performs
-    the equivalent gcloud submission on its Linux worker (it cannot call a
-    .ps1) — both render the same committed YAML templates, so the specs stay a
-    single source of truth.
+    This is the manual / Windows-dev path for launching the repeat-purchase
+    Vertex job during setup and testing. The weekly `retrain_models` Airflow
+    DAG submits the same job via the aiplatform Python SDK
+    (airflow/dags/retrain_models.py: submit_vertex_repeat_job) — both render
+    the same committed YAML template, so the job spec stays a single source
+    of truth. (Segmentation and forecasting no longer use Vertex AI — they
+    run as KubernetesPodOperator tasks on the GKE Airflow cluster.)
 
     Prerequisites:
       - gcloud SDK authenticated (`gcloud auth login`) with the target project.
@@ -24,7 +26,7 @@
         `terraform output`.
 
 .EXAMPLE
-    cd src/infra ; ./submit_vertex_jobs.ps1
+    cd src/infra ; ./submit_vertex_repeat_job.ps1
 #>
 
 $ErrorActionPreference = "Stop"
@@ -69,28 +71,20 @@ if (-not $MlTrainingSa) {
     throw "Could not resolve the ml_training service account. Set ML_TRAINING_SA or run terraform apply first."
 }
 
-function Submit-VertexJob {
-    param(
-        [string]$SpecFile,
-        [string]$DisplayName
-    )
+$SpecFile = "vertex_repeat_job.yaml"
+$DisplayName = "datapulse-repeat-purchase-training"
+$srcPath = Join-Path $VertexDir $SpecFile
+$tmpPath = Join-Path $env:TEMP "$SpecFile.rendered.yaml"
 
-    $srcPath = Join-Path $VertexDir $SpecFile
-    $tmpPath = Join-Path $env:TEMP "$SpecFile.rendered.yaml"
+(Get-Content $srcPath -Raw) `
+    -replace '__PROJECT_ID__', $env:GCP_PROJECT_ID `
+    -replace '__MLFLOW_TRACKING_URI__', $env:MLFLOW_TRACKING_URI `
+    -replace '__ML_TRAINING_SA__', $MlTrainingSa |
+    Set-Content -Path $tmpPath -Encoding utf8
 
-    (Get-Content $srcPath -Raw) `
-        -replace '__PROJECT_ID__', $env:GCP_PROJECT_ID `
-        -replace '__MLFLOW_TRACKING_URI__', $env:MLFLOW_TRACKING_URI `
-        -replace '__ML_TRAINING_SA__', $MlTrainingSa |
-        Set-Content -Path $tmpPath -Encoding utf8
-
-    Write-Host "Submitting $DisplayName ..."
-    gcloud ai custom-jobs create `
-        --region=$Region `
-        --display-name=$DisplayName `
-        --config=$tmpPath
-    if ($?) { Write-Host "$DisplayName submitted." }
-}
-
-Submit-VertexJob -SpecFile "vertex_repeat_job.yaml" -DisplayName "datapulse-repeat-purchase-training"
-Submit-VertexJob -SpecFile "vertex_forecasting_job.yaml" -DisplayName "datapulse-forecasting-training"
+Write-Host "Submitting $DisplayName ..."
+gcloud ai custom-jobs create `
+    --region=$Region `
+    --display-name=$DisplayName `
+    --config=$tmpPath
+if ($?) { Write-Host "$DisplayName submitted." }

@@ -1,0 +1,12 @@
+# Explicit rule selection so `ruff check .` behaves identically regardless
+# of which Ruff release CI happens to install. Ruff's *default* selected
+# rules have changed across releases (0.15.x -> 0.16.x expanded the default
+# set from a handful of pyflakes/pycodestyle-error codes to dozens of
+# categories, incl. pyupgrade/isort), which silently broke CI's unpinned
+# `pip install "ruff>=0.4.0"` against pre-existing, previously-clean code.
+#
+# E4/E7/E9: pycodestyle import/statement/syntax errors. F: pyflakes (unused
+# imports, undefined names, etc). This matches the rule set this project has
+# always actually been linted against.
+[lint]
+select = ["E4", "E7", "E9", "F"]

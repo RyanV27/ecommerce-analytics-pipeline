@@ -1,7 +1,10 @@
 # Vertex AI CustomJobSpec for ml/repeat_purchase_model.py.
-# Ephemeral run — submitted at runtime via submit_vertex_jobs.ps1, not by
-# Terraform. Placeholders (__TOKEN__) are substituted by that script before
-# `gcloud ai custom-jobs create --display-name=... --config=<this file>`.
+# Ephemeral run, not managed by Terraform. Two submitters share this exact
+# template as their single source of truth: the retrain_models DAG (Python
+# aiplatform SDK, airflow/dags/retrain_models.py) and the manual/Windows-dev
+# path (infra/submit_vertex_repeat_job.ps1, which still renders + calls
+# `gcloud ai custom-jobs create` directly). Placeholders (__TOKEN__) are
+# substituted by whichever path is submitting.
 # CPU-only: XGBoost needs no GPU.
 serviceAccount: __ML_TRAINING_SA__
 workerPoolSpecs:

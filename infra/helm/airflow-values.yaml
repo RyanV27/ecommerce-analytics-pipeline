@@ -1,0 +1,109 @@
+# Committed values for the official apache-airflow/airflow Helm chart
+# (version 1.13.1, supports Airflow 2.8). Project-specific values that vary
+# per environment (image repo/tag, Workload Identity annotation, env values
+# sourced from src/.env / terraform outputs) are injected at deploy time via
+# `--set` / `--set-string` by infra/deploy_airflow.ps1 — this file stays
+# generic and reusable.
+#
+# Demo-grade posture throughout: bundled Postgres subchart as the metadata
+# DB (dies with the cluster; the dedicated MLflow Cloud SQL instance is
+# untouched), ClusterIP webserver (no public ingress — access via
+# `kubectl port-forward`), default admin/admin webserver login.
+
+executor: KubernetesExecutor
+airflowVersion: "2.8.0"
+
+images:
+  airflow:
+    repository: placeholder  # overridden by deploy_airflow.ps1 via --set
+    tag: latest
+    pullPolicy: Always
+
+serviceAccount:
+  create: true
+  name: airflow
+  annotations: {}  # iam.gke.io/gcp-service-account set by deploy_airflow.ps1
+
+# DAGs, the dbt project, and the Vertex job template are baked into the
+# image (see airflow/Dockerfile) — no gitSync, no DAG persistence volume.
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: false
+
+# Chart-bundled Postgres subchart. Demo-grade and destroy-when-idle by
+# design — the MLflow tracking server's Cloud SQL instance stays a
+# dedicated, single-purpose resource and is not reused here.
+#
+# image.repository override: Bitnami retired versioned tags from
+# docker.io/bitnami/postgresql (only `latest`/digest tags remain there now);
+# the same pinned build lives on under docker.io/bitnamilegacy/postgresql.
+postgresql:
+  enabled: true
+  image:
+    repository: bitnamilegacy/postgresql
+
+webserver:
+  service:
+    type: ClusterIP
+  # Default failureThreshold=6 * periodSeconds=10 = 60s. Too tight for a cold
+  # Autopilot node (fresh node = slower gunicorn/Flask/FAB startup than a
+  # node already warmed by other pods) — bumped to give cold starts room.
+  startupProbe:
+    failureThreshold: 20
+  defaultUser:
+    enabled: true
+    role: Admin
+    username: admin
+    password: admin
+    firstName: Admin
+    lastName: User
+    email: admin@datapulse.local
+
+# Applied to scheduler, webserver, and (via KubernetesExecutor) task pods.
+# Values below are placeholders substituted by deploy_airflow.ps1.
+env:
+  - name: GCP_PROJECT_ID
+    value: __GCP_PROJECT_ID__
+  - name: GCS_BUCKET
+    value: __GCS_BUCKET__
+  - name: MLFLOW_TRACKING_URI
+    value: __MLFLOW_TRACKING_URI__
+  - name: ML_TRAINING_SA
+    value: __ML_TRAINING_SA__
+  - name: MLFLOW_ARTIFACTS_BUCKET
+    value: __MLFLOW_ARTIFACTS_BUCKET__
+  # The Helm chart's migration hook runs `airflow db migrate` (schema-only,
+  # Airflow >=2.7), not `db init` — so the metastore's connections table is
+  # never seeded with the built-in `google_cloud_default`. GCSToBigQueryOperator
+  # and remote logging both look it up by conn_id. Defining an empty
+  # google-cloud-platform connection via AIRFLOW_CONN_* env var (checked before
+  # the metastore) lets the GCP hooks fall back to ADC — i.e. Workload Identity
+  # — with no key file and no metastore write needed.
+  - name: AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT
+    value: "google-cloud-platform://"
+
+# Task pods are ephemeral under KubernetesExecutor — without remote
+# logging, logs vanish the moment a task pod is deleted. ADC via Workload
+# Identity supplies google_cloud_default's credentials automatically.
+config:
+  logging:
+    remote_logging: "True"
+    remote_base_log_folder: "gs://__MLFLOW_ARTIFACTS_BUCKET__/airflow-logs"
+    remote_log_conn_id: "google_cloud_default"
+
+# Modest requests suited to Autopilot's bin-packing billing model.
+scheduler:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+webserverResources: {}
+
+triggerer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
