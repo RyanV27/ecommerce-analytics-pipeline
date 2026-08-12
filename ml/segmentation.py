@@ -10,6 +10,7 @@ import os
 
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.sklearn
 import numpy as np
 import pandas as pd
 from google.cloud.bigquery import LoadJobConfig, SchemaField, WriteDisposition
@@ -125,6 +126,12 @@ def main() -> None:
         mlflow.log_param("k_final", K_FINAL)
         mlflow.log_param("features", ",".join(features))
         log.info(f"Final silhouette (k={K_FINAL}): {final_silhouette:.4f}")
+
+        mlflow.sklearn.log_model(
+            km_final,
+            "kmeans_segmentation_model",
+            registered_model_name="datapulse-customer-segmentation-kmeans",
+        )
 
         # Name segments via centroid inspection — never by hardcoded cluster index
         centers_raw = scaler.inverse_transform(km_final.cluster_centers_)
