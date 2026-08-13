@@ -16,21 +16,7 @@ An e-commerce analytics platform built on the Olist Brazilian E-Commerce dataset
 
 ## Architecture
 
-```
-  Olist CSVs (GCS)                Kafka producer/consumer
-        │                              (local demo, streams into
-        ▼                               bronze.orders_stream)
-┌──────────────────┐
-│ Airflow on GKE     │
-│  ingest_olist_batch │──▶  BigQuery bronze.*
-│  run_dbt_transformations │──▶  BigQuery silver.* / gold.*  (dbt)
-│  retrain_models      │──▶  ML training (GKE pods + Vertex AI) ──▶ MLflow, gold.* score tables
-└──────────────────┘
-                                          │
-                                          ▼
-                          Streamlit dashboard (Cloud Run)
-                          reads gold.* directly
-```
+![DataPulse architecture diagram](docs/datapulse-architecture.png)
 
 Airflow runs on a GKE Autopilot cluster (Helm, KubernetesExecutor). Auth throughout the GCP path is Workload Identity — no service-account keys, no `gcloud` CLI baked into any image. ML training runs either as KubernetesPodOperator pods on the same cluster (segmentation, forecasting) or as a Vertex AI CustomJob (repeat-purchase propensity) — a deliberate side-by-side comparison of both execution patterns. MLflow tracks every run against a Cloud Run service backed by Cloud SQL Postgres.
 
@@ -71,25 +57,15 @@ src/                          ← git root
 
 ## Airflow DAGs
 
-```
-ingest_olist_batch  (daily, 02:00 UTC)
-  ├─ load_orders ─┐
-  ├─ load_customers │
-  ├─ load_order_items │──▶ trigger_dbt_run ──▶ run_dbt_transformations
-  ├─ load_order_payments │        (dbt run → dbt test)
-  ├─ ... (9 tables total) │
-  └─ load_product_category_name_translation ─┘
-
-retrain_models  (weekly, Monday 03:00 UTC — serialized, not parallel)
-  train_segmentation ──▶ train_repeat_purchase_model ──▶ train_forecasting
-  (KubernetesPodOperator)   (Vertex AI CustomJob)          (KubernetesPodOperator)
-```
+![Airflow DAGs flow diagram](docs/airflow-dags.png)
 
 - **`ingest_olist_batch`** loads each of the 9 Olist CSVs from GCS into `bronze.*` (`WRITE_TRUNCATE`), then triggers the dbt DAG.
 - **`run_dbt_transformations`** runs `dbt run` then `dbt test` against the whole project, rebuilding `silver.*` and `gold.*`.
 - **`retrain_models`** retrains all three ML models. The three tasks are deliberately serialized — segmentation and forecasting run as pods on the GKE cluster, while the repeat-purchase model is submitted as a Vertex AI CustomJob — kept sequential so they don't all hit the shared MLflow backend at once.
 
 ## dbt transformations
+
+![dbt transformations diagram](docs/dbt-transformations.png)
 
 - **Staging (`stg_*`, views in `silver`)** — one model per source table: casts types, fixes column-name typos, deduplicates geolocation, aggregates payments to one row per order.
 - **Intermediate (`int_*`, views in `silver`)** — joins staging models into order- and customer-level grain (e.g. RFM inputs per `customer_unique_id`); not exposed to BI tools.
