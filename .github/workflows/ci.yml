@@ -64,6 +64,31 @@ jobs:
               print('OK:', f)
           PY
 
+  dashboard-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: AST-check all dashboard page files
+        # Same fast syntax-only check as dag-syntax, applied to app.py + pages/.
+        # Does not install streamlit/plotly, so it won't catch missing imports —
+        # just SyntaxErrors, which is what's realistically going to break in CI.
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          files = [Path('dashboard/app.py')] + sorted(Path('dashboard/pages').glob('*.py'))
+          for f in files:
+              with open(f) as fp:
+                  ast.parse(fp.read())
+              print('OK:', f)
+          PY
+
   ab-tests:
     runs-on: ubuntu-latest
     steps:

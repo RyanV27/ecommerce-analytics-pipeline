@@ -19,6 +19,29 @@ resource "google_storage_bucket" "mlflow_artifacts" {
   force_destroy               = false
 }
 
+# --- dbt docs static site ---------------------------------------------------
+#
+# Publishes `dbt docs generate` output (lineage graph + column-level docs) as
+# a public static site. Static HTML/JSON, no compute — negligible cost, so
+# unlike GKE/Cloud SQL this is left up rather than destroy-when-idle.
+resource "google_storage_bucket" "dbt_docs" {
+  name                        = "datapulse-dbt-docs-${var.project_id}"
+  location                    = "US"
+  uniform_bucket_level_access = true
+  force_destroy               = true
+
+  website {
+    main_page_suffix = "index.html"
+    not_found_page   = "index.html"
+  }
+}
+
+resource "google_storage_bucket_iam_member" "dbt_docs_public_read" {
+  bucket = google_storage_bucket.dbt_docs.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+
 resource "google_service_account" "ml_training" {
   account_id   = "datapulse-ml-training"
   display_name = "DataPulse ML training (Cloud Run Job + Vertex AI)"

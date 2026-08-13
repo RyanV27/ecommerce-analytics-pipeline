@@ -189,7 +189,11 @@ def main() -> None:
         mlflow.log_figure(fig2, "confusion_matrix.png")
         plt.close(fig2)
 
-        mlflow.xgboost.log_model(model, "xgb_repeat_purchase_model")
+        mlflow.xgboost.log_model(
+            model,
+            "xgb_repeat_purchase_model",
+            registered_model_name="datapulse-repeat-purchase-xgb",
+        )
         run_id = mlflow.active_run().info.run_id
 
     log.info(f"MLflow run: {run_id}")

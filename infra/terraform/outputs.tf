@@ -32,3 +32,13 @@ output "mlflow_db_connection_name" {
   description = "Cloud SQL connection name for the MLflow Postgres backend store (diagnostic)"
   value       = google_sql_database_instance.mlflow.connection_name
 }
+
+output "dbt_docs_bucket" {
+  description = "GCS bucket serving the published dbt docs static site"
+  value       = google_storage_bucket.dbt_docs.name
+}
+
+output "dbt_docs_url" {
+  description = "Public URL for the published dbt lineage graph / docs site"
+  value       = "https://storage.googleapis.com/${google_storage_bucket.dbt_docs.name}/index.html"
+}
