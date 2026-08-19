@@ -9,12 +9,6 @@ variable "region" {
   default     = "us-central1"
 }
 
-variable "mlflow_image" {
-  description = "Fully qualified image for the MLflow tracking server (build first via mlflow_server/cloudbuild.yaml)"
-  type        = string
-  default     = "gcr.io/PROJECT_ID/datapulse-mlflow"
-}
-
 variable "db_tier" {
   description = "Cloud SQL machine tier for the MLflow backend store."
   type        = string

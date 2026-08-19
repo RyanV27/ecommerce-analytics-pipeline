@@ -203,7 +203,7 @@ resource "google_cloud_run_v2_service" "mlflow" {
     }
 
     containers {
-      image = var.mlflow_image
+      image = "gcr.io/${var.project_id}/datapulse-mlflow"
 
       ports {
         container_port = 8080

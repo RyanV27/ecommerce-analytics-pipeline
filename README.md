@@ -77,7 +77,7 @@ src/                          ← git root
 # 1. Provision durable infra: GKE Autopilot cluster, MLflow Cloud Run + Cloud SQL, IAM/Workload Identity
 cd infra/terraform
 terraform init
-terraform apply
+terraform apply -var "project_id=YOUR_PROJECT_ID"
 
 # 2. Deploy Airflow onto the cluster (Helm, KubernetesExecutor, Workload Identity)
 cd ..
