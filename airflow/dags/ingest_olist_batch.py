@@ -25,6 +25,7 @@ with DAG(
     schedule_interval='0 2 * * *',
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    max_active_tasks=1,
     default_args={
         'retries': 2,
         'retry_delay': timedelta(minutes=5),

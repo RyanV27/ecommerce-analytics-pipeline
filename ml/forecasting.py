@@ -11,6 +11,8 @@ import warnings
 
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.prophet
+import mlflow.statsmodels
 import numpy as np
 import pandas as pd
 from google.cloud.bigquery import LoadJobConfig, SchemaField, WriteDisposition
@@ -124,12 +126,22 @@ def fit_forecast(weekly_df: pd.DataFrame, category: str) -> dict | None:
         future = m_full.make_future_dataframe(periods=FORECAST_PERIODS, freq="W")
         forecast = m_full.predict(future)
         model_name = "prophet"
+        fitted_model = m_full
+        model_params = {
+            "weekly_seasonality": True,
+            "yearly_seasonality": True,
+            "interval_width": 0.95,
+            "changepoint_prior_scale": m_full.changepoint_prior_scale,
+            "train_weeks": len(series),
+            "holdout_weeks": holdout,
+        }
 
     except ImportError:
         log.warning("Prophet not available — using statsmodels ExponentialSmoothing")
         from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
         y_train = train["order_count"].values.astype(float)
+        seasonal_periods = None
         try:
             # Clamp to a period that fits within 2 cycles (ES requirement)
             safe_seasonal = min(52, max(4, len(y_train) // 2))
@@ -137,6 +149,7 @@ def fit_forecast(weekly_df: pd.DataFrame, category: str) -> dict | None:
                 y_train, trend="add", seasonal="add", seasonal_periods=safe_seasonal
             )
             fit = es.fit()
+            seasonal_periods = safe_seasonal
         except Exception:
             es = ExponentialSmoothing(y_train, trend="add")
             fit = es.fit()
@@ -164,6 +177,21 @@ def fit_forecast(weekly_df: pd.DataFrame, category: str) -> dict | None:
         full_df = series.rename(columns={"week_start": "ds", "order_count": "y"}).copy()
         full_df["ds"] = pd.to_datetime(full_df["ds"])
         model_name = "exponential_smoothing"
+        fitted_model = fit
+        model_params = {
+            "trend": "add",
+            "seasonal": "add" if seasonal_periods is not None else None,
+            "seasonal_periods": seasonal_periods,
+            "train_weeks": len(y_train),
+            "holdout_weeks": holdout,
+            "smoothing_level": round(float(fit.params["smoothing_level"]), 4),
+            "smoothing_trend": round(float(fit.params["smoothing_trend"]), 4)
+            if fit.params["smoothing_trend"] is not None
+            else None,
+            "smoothing_seasonal": round(float(fit.params["smoothing_seasonal"]), 4)
+            if fit.params["smoothing_seasonal"] is not None
+            else None,
+        }
 
     return {
         "model": model_name,
@@ -172,6 +200,8 @@ def fit_forecast(weekly_df: pd.DataFrame, category: str) -> dict | None:
         "mape": mape,
         "forecast": forecast,
         "series": full_df,
+        "params": model_params,
+        "fitted_model": fitted_model,
     }
 
 
@@ -205,6 +235,8 @@ def main() -> None:
 
             safe = cat.replace(" ", "_").replace("/", "_")
             mlflow.log_param(f"model_{safe}", result["model"])
+            for param_name, param_value in result["params"].items():
+                mlflow.log_param(f"{safe}_{param_name}", param_value)
             mlflow.log_metric(f"{safe}_mae", result["mae"])
             mlflow.log_metric(f"{safe}_smape", result["smape"])
             if not np.isnan(result["mape"]):
@@ -212,6 +244,20 @@ def main() -> None:
             log.info(
                 f"  {cat}: MAE={result['mae']:.2f}  sMAPE={result['smape']:.4f}"
             )
+
+            registered_name = f"datapulse-demand-forecast-{safe}"
+            if result["model"] == "prophet":
+                mlflow.prophet.log_model(
+                    result["fitted_model"],
+                    f"{safe}_model",
+                    registered_model_name=registered_name,
+                )
+            else:
+                mlflow.statsmodels.log_model(
+                    result["fitted_model"],
+                    f"{safe}_model",
+                    registered_model_name=registered_name,
+                )
 
             series = result["series"]
             forecast = result["forecast"]
