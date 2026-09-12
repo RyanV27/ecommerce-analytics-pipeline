@@ -2,6 +2,8 @@
 
 An e-commerce analytics platform built on the Olist Brazilian E-Commerce dataset (100K orders, 9 source tables), running on managed GCP infrastructure: BigQuery, GKE Autopilot, Cloud Run, and Vertex AI. Airflow orchestrates ingestion, dbt transformations, and ML training end to end; a Streamlit dashboard on Cloud Run surfaces the results.
 
+Demo video can be found [here](https://www.youtube.com/watch?v=GjYkJvnaahQ).
+
 ## Table of contents
 
 - [Architecture](#architecture)
